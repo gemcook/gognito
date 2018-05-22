@@ -1,0 +1,8 @@
+
+### dep ###
+/vendor
+/vendor.orig
+
+### log ###
+*.log
+
