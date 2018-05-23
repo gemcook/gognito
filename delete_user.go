@@ -16,8 +16,8 @@ type UserIdentityProvider struct {
 
 // NewUserIdentityProvider はユーザー認証管理リポジトリを初期化します
 func NewUserIdentityProvider(userPool *UserPool) UserPoolInterface {
-	sess := GetAWSSession()
-	idp := cognitoidentityprovider.New(sess)
+	session := GetAWSSession()
+	idp := cognitoidentityprovider.New(session)
 	u := UserIdentityProvider{
 		userPool: userPool,
 		idp:      idp,

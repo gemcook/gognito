@@ -1,4 +1,4 @@
-package userpool
+package auth
 
 import (
 	"encoding/json"
@@ -9,10 +9,11 @@ import (
 	"github.com/gemcook/gognito"
 )
 
-// UserPooler has CognitoUserPool JWT auth info.
-type UserPooler interface {
-	GetJWK() (map[string]JWKKey, error)
-	GetURL() string
+// IdentityProvider provides the information to authenticate user.
+type IdentityProvider interface {
+	JWK() (map[string]JWKKey, error)
+	Issuer() string
+	Audience() string
 }
 
 // JWK is json data struct for JSON Web Key.
@@ -35,14 +36,24 @@ type UserPool struct {
 	gognito.UserPool
 }
 
-// GetJWKURL returns Cognito UserPool's JWK URL.
-func (up *UserPool) GetJWKURL() string {
-	return fmt.Sprintf("%v/.well-known/jwks.json", up.GetURL())
+// URL returns Cognito UserPool's URL.
+func (up *UserPool) URL() string {
+	return fmt.Sprintf("https://cognito-idp.%v.amazonaws.com/%v", up.Region, up.PoolID)
 }
 
-// GetURL returns Cognito UserPool's URL.
-func (up *UserPool) GetURL() string {
-	return fmt.Sprintf("https://cognito-idp.%v.amazonaws.com/%v", up.Region, up.PoolID)
+// JWKURL returns Cognito UserPool's JWK URL.
+func (up *UserPool) JWKURL() string {
+	return fmt.Sprintf("%v/.well-known/jwks.json", up.URL())
+}
+
+// Issuer returns iss for JWT claims
+func (up *UserPool) Issuer() string {
+	return up.URL()
+}
+
+// Audience returns aud for JWT claims
+func (up *UserPool) Audience() string {
+	return up.AppClientID
 }
 
 // getJSON downloads JSON data from the given url, then apply to target.
@@ -57,19 +68,19 @@ func getJSON(url string, target interface{}) error {
 	return json.NewDecoder(r.Body).Decode(target)
 }
 
-// GetJWK gets CognitoUserPool's JWK
-func (up *UserPool) GetJWK() (map[string]JWKKey, error) {
+// JWK gets CognitoUserPool's JWK
+func (up *UserPool) JWK() (map[string]JWKKey, error) {
 
 	jwk := &JWK{}
-	jwkURL := up.GetJWKURL()
+	jwkURL := up.JWKURL()
 	err := getJSON(jwkURL, jwk)
 	if err != nil {
 		return nil, err
 	}
 
 	jwkMap := make(map[string]JWKKey, 0)
-	for _, jwk := range jwk.Keys {
-		jwkMap[jwk.Kid] = jwk
+	for _, key := range jwk.Keys {
+		jwkMap[key.Kid] = key
 	}
 	return jwkMap, nil
 }

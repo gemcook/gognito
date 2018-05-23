@@ -4,5 +4,5 @@ package gognito
 type UserPool struct {
 	PoolID      string
 	Region      string
-	ClientAppID string
+	AppClientID string
 }

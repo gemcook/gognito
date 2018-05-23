@@ -1,4 +1,4 @@
-package userpool
+package auth
 
 import (
 	"crypto/rsa"
@@ -12,6 +12,8 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
+var noVerificationWorningMessage = "JWT Token is not verified properly. Because you are running in 'NoVerification MODE'."
+
 // Authenticator はユーザー認証サービスです
 type Authenticator interface {
 	ValidateToken(token string) (*jwt.Token, error)
@@ -19,24 +21,22 @@ type Authenticator interface {
 
 // Auth はユーザー認証サービスです
 type Auth struct {
-	pool   UserPooler
+	idp    IdentityProvider
 	jwk    map[string]JWKKey
-	option *AuthOption
+	option *Option
 }
 
-// AuthOption defines Auth options
-type AuthOption struct {
+// Option defines Auth options
+type Option struct {
 	NoVerification bool
 }
 
-var noVerificationWorningMessage = "JWT Token is not verified properly. Because you are running in 'NoVerification MODE'."
-
 // New initializes Cognito UserPool authenticator
-func New(userPool UserPooler, opt *AuthOption) (Authenticator, error) {
+func New(idp IdentityProvider, opt *Option) (Authenticator, error) {
 
 	s := &Auth{
 		option: opt,
-		pool:   userPool,
+		idp:    idp,
 	}
 
 	if opt.NoVerification {
@@ -48,7 +48,7 @@ func New(userPool UserPooler, opt *AuthOption) (Authenticator, error) {
 	var jwk map[string]JWKKey
 
 	// 1. Download and store the JSON Web Key (JWK) for your user pool.
-	jwk, err := userPool.GetJWK()
+	jwk, err := idp.JWK()
 
 	if err != nil {
 		// NetworkError or UserPool doesn't exist
@@ -63,7 +63,7 @@ func New(userPool UserPooler, opt *AuthOption) (Authenticator, error) {
 func (a *Auth) ValidateToken(tokenStr string) (*jwt.Token, error) {
 	token, err := validateToken(tokenStr, a.jwk, func(claims jwt.Claims) error {
 		if mapClaims, ok := claims.(jwt.MapClaims); ok {
-			return validateAWSJwtClaims(mapClaims, a.pool)
+			return validateAWSJwtClaims(mapClaims, a.idp)
 		}
 		return fmt.Errorf("jwt claims type does not match. expected jwt.MapClaims")
 	})
@@ -119,13 +119,22 @@ func validateToken(tokenStr string, jwk map[string]JWKKey, validateClaims func(c
 }
 
 // validateAWSJwtClaims validates AWS Cognito User Pool JWT
-func validateAWSJwtClaims(claims jwt.MapClaims, userPool UserPooler) error {
+func validateAWSJwtClaims(claims jwt.MapClaims, userPool IdentityProvider) error {
 	var err error
 	// 3. Check the iss claim. It should match your user pool.
-	issShouldBe := userPool.GetURL()
+	issShouldBe := userPool.Issuer()
 	err = validateClaimItem("iss", []string{issShouldBe}, claims)
 	if err != nil {
 		return err
+	}
+
+	// Optional. Check the aud claim. It should match client app id.
+	audShouldBe := userPool.Audience()
+	if audShouldBe != "" {
+		err = validateClaimItem("aud", []string{audShouldBe}, claims)
+		if err != nil {
+			return err
+		}
 	}
 
 	// 4. Check the token_use claim.
@@ -177,9 +186,9 @@ func convertKey(rawE, rawN string) (*rsa.PublicKey, error) {
 		return nil, err
 	}
 	if len(decodedE) < 4 {
-		ndata := make([]byte, 4)
-		copy(ndata[4-len(decodedE):], decodedE)
-		decodedE = ndata
+		nData := make([]byte, 4)
+		copy(nData[4-len(decodedE):], decodedE)
+		decodedE = nData
 	}
 	pubKey := &rsa.PublicKey{
 		N: &big.Int{},
