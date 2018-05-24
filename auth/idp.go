@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/gemcook/gognito"
 )
 
 // IdentityProvider provides the information to authenticate user.
@@ -33,7 +31,9 @@ type JWKKey struct {
 
 // UserPool has CognitoUserPool JWT auth info.
 type UserPool struct {
-	gognito.UserPool
+	PoolID      string
+	Region      string
+	AppClientID string
 }
 
 // URL returns Cognito UserPool's URL.
